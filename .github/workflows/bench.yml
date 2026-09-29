@@ -1,0 +1,29 @@
+name: Benchmark
+
+# Manual only: a full benchmark run on a GitHub-hosted runner, as a second
+# data point next to the laptop numbers. Shared cloud VMs are noisy too, so
+# the results are uploaded as an artifact to be reviewed before committing.
+on:
+  workflow_dispatch:
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Build (Release, gcc, benchmark only)
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLOB_BUILD_TESTS=OFF
+          cmake --build build
+      - name: Run
+        run: |
+          mkdir -p bench-ci
+          nproc > bench-ci/runner.txt
+          lscpu >> bench-ci/runner.txt
+          ./build/lob_bench --ops 2000000 --reps 11 --lat-reps 5 --cpu 1 --out bench-ci
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-ci
+          path: bench-ci
