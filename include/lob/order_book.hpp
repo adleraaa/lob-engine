@@ -2,6 +2,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <optional>
 #include <utility>
@@ -29,6 +30,12 @@ namespace lob {
 //   - Self-trades are not prevented (no self-trade protection).
 //
 // Not thread-safe: one thread owns a book.
+//
+// Listener contract: events are delivered synchronously, in the middle of a
+// request (a Trade is emitted before the filled maker is unlinked). A listener
+// must therefore not call add/cancel/modify on the same book from inside a
+// callback; that could free an order or level the matching loop still points
+// at. Debug builds assert on such re-entry; queue the reaction instead.
 template <typename Levels>
 class OrderBook {
 public:
@@ -41,8 +48,16 @@ public:
     OrderBook(const OrderBook&) = delete;  // orders point into this book's pool
     OrderBook& operator=(const OrderBook&) = delete;
 
+    // Pre-allocates room for `orders` resting orders (pool + id map), so the
+    // first `orders` rests do not allocate. Optional; the book grows as needed.
+    void reserve(std::size_t orders) {
+        pool_.reserve(orders);
+        ids_.reserve(orders);
+    }
+
     // Submits a new order. price is ignored for Market orders.
     ExecReport add(OrderId id, Side side, OrderType type, Price price, Qty qty) {
+        assert(!in_callback_ && "listeners must not call back into the book");
         const bool is_market = type == OrderType::Market;
         if (Status s = validate_new(id, qty, is_market, price); s != Status::Ok) {
             return ExecReport{s, 0, 0, 0};
@@ -70,6 +85,7 @@ public:
     }
 
     Status cancel(OrderId id) {
+        assert(!in_callback_ && "listeners must not call back into the book");
         if (id == 0) {
             return Status::InvalidId;
         }
@@ -88,6 +104,7 @@ public:
     //     order with the same id, so it goes to the back of the queue and may
     //     trade immediately if the new price crosses.
     ExecReport modify(OrderId id, Price new_price, Qty new_qty) {
+        assert(!in_callback_ && "listeners must not call back into the book");
         if (id == 0) {
             return ExecReport{Status::InvalidId, 0, 0, 0};
         }
@@ -106,7 +123,7 @@ public:
             if (new_qty < order->qty) {
                 PriceLevel* level = order->level;
                 level->reduce(order, order->qty - new_qty);
-                listener_.on_level_update({order->side, level->price, level->total_qty});
+                notify_level({order->side, level->price, level->total_qty});
             }
             return ExecReport{Status::Ok, 0, new_qty, 0};
         }
@@ -194,14 +211,14 @@ private:
             const Qty fill = std::min(qty - filled, maker->qty);
             const Price price = level->price;
             filled += fill;
-            listener_.on_trade({taker_id, maker->id, taker_side, price, fill});
+            notify_trade({taker_id, maker->id, taker_side, price, fill});
 
             if (fill == maker->qty) {
                 // remove_resting may destroy `level`, so do not touch it after.
                 remove_resting(maker);
             } else {
                 level->reduce(maker, fill);
-                listener_.on_level_update({maker->side, price, level->total_qty});
+                notify_level({maker->side, price, level->total_qty});
             }
         }
         return filled;
@@ -215,7 +232,7 @@ private:
         order->qty = qty;
         levels(side).insert(order);
         ids_.insert(id, order);
-        listener_.on_level_update({side, price, order->level->total_qty});
+        notify_level({side, price, order->level->total_qty});
     }
 
     // Takes a resting order off the book entirely and returns its memory to
@@ -227,7 +244,7 @@ private:
         levels(side).remove(order);
         ids_.erase(order->id);
         pool_.release(order);
-        listener_.on_level_update({side, price, level_total_after});
+        notify_level({side, price, level_total_after});
     }
 
     static std::optional<Price> best_price(const Levels& side) {
@@ -250,7 +267,21 @@ private:
         });
     }
 
+    // All listener calls go through these two, so the re-entry check above
+    // has a single place to set its flag.
+    void notify_trade(const Trade& trade) {
+        in_callback_ = true;
+        listener_.on_trade(trade);
+        in_callback_ = false;
+    }
+    void notify_level(const LevelUpdate& update) {
+        in_callback_ = true;
+        listener_.on_level_update(update);
+        in_callback_ = false;
+    }
+
     EventListener& listener_;
+    bool in_callback_ = false;  // true while a listener callback is running
     Levels bids_;
     Levels asks_;
     OrderIdMap ids_;

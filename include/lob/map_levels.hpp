@@ -3,12 +3,24 @@
 
 #include <cstddef>
 #include <iterator>
+#include <limits>
 #include <map>
 
 #include "lob/price_level.hpp"
 #include "lob/types.hpp"
 
 namespace lob {
+
+// The map itself works for any positive price. The optional range exists so
+// a map book can be configured with exactly the same validation rules as a
+// flat book (the differential test and the benchmark do this); by default
+// every positive price is accepted. Defined outside MapLevels because a
+// nested struct with default member initializers cannot be used as a default
+// argument inside its own class.
+struct MapLevelsConfig {
+    Price min_price = 1;
+    Price max_price = std::numeric_limits<Price>::max();
+};
 
 // Price levels in a balanced tree keyed by price.
 //
@@ -21,12 +33,12 @@ namespace lob {
 // is empty, i.e. when no Order points at it any more.
 class MapLevels {
 public:
-    struct Config {};  // nothing to configure
+    using Config = MapLevelsConfig;
 
-    explicit MapLevels(Side side, Config = {}) : side_(side) {}
+    explicit MapLevels(Side side, Config config = {})
+        : side_(side), min_price_(config.min_price), max_price_(config.max_price) {}
 
-    bool accepts_price(Price) const { return true; }
-    bool empty() const { return levels_.empty(); }
+    bool accepts_price(Price price) const { return price >= min_price_ && price <= max_price_; }
     std::size_t level_count() const { return levels_.size(); }
 
     // Best level: highest bid or lowest ask. nullptr if this side is empty.
@@ -78,6 +90,8 @@ public:
 
 private:
     Side side_;
+    Price min_price_;
+    Price max_price_;
     std::map<Price, PriceLevel> levels_;
 };
 

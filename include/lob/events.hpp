@@ -32,7 +32,8 @@ struct LevelUpdate {
 };
 
 // Receiver of book events. The book holds a reference to it and calls it
-// synchronously from inside add/cancel/modify.
+// synchronously from inside add/cancel/modify. A callback must not call back
+// into the same book (see OrderBook); debug builds assert on that.
 class EventListener {
 public:
     virtual ~EventListener() = default;

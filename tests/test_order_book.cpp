@@ -202,7 +202,11 @@ TYPED_TEST(BookTest, ModifyToSameQuantityIsNoOp) {
 TYPED_TEST(BookTest, ModifyUpLosesTimePriority) {
     this->limit(1, kBuy, 100, 10);
     this->limit(2, kBuy, 100, 10);
+    this->events.clear();
     EXPECT_EQ(this->book.modify(1, 100, 11), (ExecReport{Status::Ok, 0, 11, 0}));
+    // Cancel + re-add: the level drops to 10 (order 1 removed), then rises
+    // to 21 (order 1 re-queued at the back). Two updates, not one.
+    EXPECT_EQ(this->events.updates, (std::vector<LevelUpdate>{{kBuy, 100, 10}, {kBuy, 100, 21}}));
     EXPECT_EQ(this->book.snapshot().bids, (std::vector<LevelView>{{100, {{2, 10}, {1, 11}}}}));
 }
 
@@ -216,6 +220,41 @@ TYPED_TEST(BookTest, ModifyPriceMovesOrderAndCanTrade) {
     const std::vector<LevelUpdate> want{{kBuy, 100, 0}, {kSell, 105, 0}, {kBuy, 105, 7}};
     EXPECT_EQ(this->events.updates, want);
     EXPECT_EQ(this->book.snapshot().bids, (std::vector<LevelView>{{105, {{2, 7}}}}));
+}
+
+// ---- bounded tick range: every book type can be configured with one ---------
+
+template <typename Book>
+class RangeTest : public ::testing::Test {
+protected:
+    RecordingListener events;
+    Book book{events, {100, 200}};
+};
+TYPED_TEST_SUITE(RangeTest, BookTypes);
+
+TYPED_TEST(RangeTest, RejectsPricesOutsideConfiguredRangeWithoutSideEffects) {
+    auto& book = this->book;
+    EXPECT_EQ(book.add(1, kBuy, OrderType::Limit, 99, 1).status, Status::PriceOutOfRange);
+    EXPECT_EQ(book.add(1, kBuy, OrderType::Limit, 201, 1).status, Status::PriceOutOfRange);
+    EXPECT_EQ(book.add(1, kBuy, OrderType::IOC, 201, 1).status, Status::PriceOutOfRange);
+    EXPECT_TRUE(this->events.updates.empty());
+
+    EXPECT_EQ(book.add(1, kBuy, OrderType::Limit, 100, 1).status, Status::Ok);  // both ends are inside
+    EXPECT_EQ(book.add(2, kSell, OrderType::Limit, 200, 1).status, Status::Ok);
+    this->events.clear();
+
+    // modify() removes the order before re-adding it, so it must validate the
+    // new price first: a rejected modify must leave order 2 where it was.
+    EXPECT_EQ(book.modify(2, 201, 1).status, Status::PriceOutOfRange);
+    EXPECT_EQ(book.modify(2, 201, 5).status, Status::PriceOutOfRange);
+    EXPECT_TRUE(this->events.updates.empty());
+    EXPECT_EQ(book.snapshot().asks, (std::vector<LevelView>{{200, {{2, 1}}}}));
+
+    // Market orders carry no price, so the range does not apply.
+    EXPECT_EQ(book.add(3, kSell, OrderType::Market, 0, 1), (ExecReport{Status::Ok, 1, 0, 0}));
+    EXPECT_EQ(this->events.trades, (std::vector<Trade>{{3, 1, kSell, 100, 1}}));
+    EXPECT_EQ(this->events.updates, (std::vector<LevelUpdate>{{kBuy, 100, 0}}));
+    EXPECT_TRUE(book.snapshot().bids.empty());
 }
 
 // ---- engine-only tests (the reference book has no such queries) -------------
@@ -254,6 +293,14 @@ TYPED_TEST(EngineTest, OrderCountAndContains) {
     EXPECT_EQ(this->book.order_count(), 1u);
 }
 
+TYPED_TEST(EngineTest, ReserveDoesNotChangeBehaviour) {
+    this->book.reserve(10'000);
+    this->limit(1, kSell, 100, 5);
+    EXPECT_EQ(this->limit(2, kBuy, 100, 3), (ExecReport{Status::Ok, 3, 0, 0}));
+    EXPECT_EQ(this->book.snapshot().asks, (std::vector<LevelView>{{100, {{1, 2}}}}));
+    EXPECT_EQ(this->book.order_count(), 1u);
+}
+
 // Many orders force the id map to grow and the pool to add chunks; every
 // order must still be found and cancellable afterwards.
 TYPED_TEST(EngineTest, SurvivesGrowthOfPoolAndIdMap) {
@@ -267,19 +314,6 @@ TYPED_TEST(EngineTest, SurvivesGrowthOfPoolAndIdMap) {
     }
     EXPECT_EQ(this->book.order_count(), kCount / 2);
     EXPECT_EQ(this->book.best_bid(), 148);  // odd ids (odd price offsets) are gone
-}
-
-TEST(FlatOrderBookTest, RejectsPricesOutsideConfiguredRange) {
-    RecordingListener events;
-    FlatOrderBook book(events, {100, 200});
-    EXPECT_EQ(book.add(1, kBuy, OrderType::Limit, 99, 1).status, Status::PriceOutOfRange);
-    EXPECT_EQ(book.add(1, kBuy, OrderType::Limit, 201, 1).status, Status::PriceOutOfRange);
-    EXPECT_EQ(book.add(1, kBuy, OrderType::Limit, 100, 1).status, Status::Ok);
-    EXPECT_EQ(book.add(2, kSell, OrderType::Limit, 200, 1).status, Status::Ok);
-    EXPECT_EQ(book.modify(2, 201, 1).status, Status::PriceOutOfRange);
-    // Market orders carry no price, so the range does not apply.
-    EXPECT_EQ(book.add(3, kSell, OrderType::Market, 0, 1).filled, 1);
-    EXPECT_TRUE(events.updates.size() >= 2u);
 }
 
 TEST(FlatOrderBookTest, BestScansPastEmptyLevelsAtTheEdgesOfTheRange) {

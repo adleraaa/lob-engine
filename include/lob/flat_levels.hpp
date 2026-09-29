@@ -42,7 +42,6 @@ public:
     }
 
     bool accepts_price(Price price) const { return price >= min_price_ && price <= max_price_; }
-    bool empty() const { return non_empty_ == 0; }
     std::size_t level_count() const { return non_empty_; }
 
     PriceLevel* best() { return non_empty_ == 0 ? nullptr : &levels_[best_]; }

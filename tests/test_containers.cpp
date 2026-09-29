@@ -4,8 +4,10 @@
 
 #include <set>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
+#include "cli.hpp"
 #include "lob/object_pool.hpp"
 #include "lob/order_id_map.hpp"
 #include "lob/price_level.hpp"
@@ -35,6 +37,19 @@ TEST(ObjectPool, HandsOutDistinctObjectsAndReusesReleasedOnes) {
     EXPECT_EQ(pool.capacity(), 12u);
 }
 
+TEST(ObjectPool, ReserveAddsWholeChunksUpFront) {
+    ObjectPool<Order> pool(4);
+    pool.reserve(9);
+    EXPECT_EQ(pool.capacity(), 12u);  // three chunks of 4
+    EXPECT_EQ(pool.in_use(), 0u);
+    for (int i = 0; i < 12; ++i) {
+        pool.acquire();
+    }
+    EXPECT_EQ(pool.capacity(), 12u);  // no chunk added while acquiring
+    pool.reserve(5);                  // already enough: no-op
+    EXPECT_EQ(pool.capacity(), 12u);
+}
+
 TEST(PriceLevel, FifoQueueWithMiddleErase) {
     PriceLevel level;
     level.price = 50;
@@ -45,7 +60,6 @@ TEST(PriceLevel, FifoQueueWithMiddleErase) {
     level.push_back(&b);
     level.push_back(&c);
     EXPECT_EQ(level.total_qty, 12);
-    EXPECT_EQ(level.count, 3u);
 
     level.erase(&b);
     EXPECT_EQ(level.head, &a);
@@ -62,7 +76,6 @@ TEST(PriceLevel, FifoQueueWithMiddleErase) {
     EXPECT_TRUE(level.empty());
     EXPECT_EQ(level.tail, nullptr);
     EXPECT_EQ(level.total_qty, 0);
-    EXPECT_EQ(level.count, 0u);
 }
 
 TEST(OrderIdMap, BasicInsertFindErase) {
@@ -78,10 +91,77 @@ TEST(OrderIdMap, BasicInsertFindErase) {
     EXPECT_EQ(map.size(), 0u);
 }
 
-// Random inserts/erases checked against std::unordered_map. A tiny starting
-// capacity forces many collisions, long probe runs, wrap-around at the end of
-// the array and several resizes - the cases where backward-shift deletion
-// could go wrong.
+TEST(OrderIdMap, ReserveGrowsOnceForTheRequestedSize) {
+    OrderIdMap map(16);
+    map.reserve(100);
+    const std::size_t capacity = map.capacity();
+    EXPECT_GE(capacity, 200u);  // load factor stays <= 1/2
+    std::vector<Order> storage(100);
+    for (OrderId id = 1; id <= 100; ++id) {
+        ASSERT_TRUE(map.insert(id, &storage[id - 1]));
+    }
+    EXPECT_EQ(map.capacity(), capacity);  // no resize during the inserts
+    EXPECT_EQ(map.find(57), &storage[56]);
+}
+
+// Forces collisions instead of hoping for them: picks ids whose home slots
+// are 14, 15 and 0 of a 16-slot table, so they form one probe cluster that
+// wraps around the end of the array. Inserting them in a random order and
+// erasing them in another random order exercises backward shift across the
+// wrap, where the modular distance arithmetic in erase() matters.
+TEST(OrderIdMap, BackwardShiftAcrossTableEndWithForcedCollisions) {
+    const OrderIdMap probe(16);  // only used to compute home slots
+    int wanted[16] = {};
+    wanted[14] = 2;
+    wanted[15] = 3;
+    wanted[0] = 2;
+    std::vector<OrderId> ids;
+    for (OrderId id = 1; ids.size() < 7; ++id) {
+        const std::size_t slot = probe.home_slot(id);
+        if (wanted[slot] > 0) {
+            --wanted[slot];
+            ids.push_back(id);
+        }
+    }
+    std::vector<Order> storage(ids.size());
+    auto value_of = [&](OrderId id) -> Order* {
+        for (std::size_t k = 0; k < ids.size(); ++k) {
+            if (ids[k] == id) return &storage[k];
+        }
+        return nullptr;
+    };
+    auto shuffle = [](std::vector<OrderId>& v, flow::Rng& rng) {
+        for (std::size_t k = v.size(); k > 1; --k) {
+            std::swap(v[k - 1], v[static_cast<std::size_t>(rng.uniform(0, static_cast<std::int64_t>(k) - 1))]);
+        }
+    };
+
+    flow::Rng rng(7);
+    for (int trial = 0; trial < 2000; ++trial) {
+        OrderIdMap map(16);
+        std::vector<OrderId> order = ids;
+        shuffle(order, rng);
+        for (OrderId id : order) {
+            ASSERT_TRUE(map.insert(id, value_of(id)));
+        }
+        ASSERT_EQ(map.capacity(), 16u) << "table grew, so the collisions are no longer forced";
+
+        shuffle(order, rng);
+        for (std::size_t erased = 0; erased < order.size(); ++erased) {
+            ASSERT_TRUE(map.erase(order[erased]));
+            ASSERT_EQ(map.find(order[erased]), nullptr);
+            for (std::size_t k = erased + 1; k < order.size(); ++k) {
+                ASSERT_EQ(map.find(order[k]), value_of(order[k])) << "trial " << trial << ": lost id " << order[k];
+            }
+        }
+        ASSERT_EQ(map.size(), 0u);
+    }
+}
+
+// Random inserts/erases checked against std::unordered_map. A small starting
+// table and ids drawn from a small range give heavy churn, several resizes
+// and naturally occurring collisions (the forced-collision test above covers
+// the wrap-around case deliberately).
 TEST(OrderIdMap, MatchesStdUnorderedMapUnderRandomChurn) {
     OrderIdMap map(16);
     std::unordered_map<OrderId, Order*> expected;
@@ -107,6 +187,20 @@ TEST(OrderIdMap, MatchesStdUnorderedMapUnderRandomChurn) {
     for (const auto& [id, value] : expected) {
         EXPECT_EQ(map.find(id), value);
     }
+}
+
+TEST(Cli, ParseU64AcceptsOnlyWholeDecimalNumbers) {
+    std::uint64_t v = 7;
+    EXPECT_TRUE(cli::parse_u64("0", v));
+    EXPECT_EQ(v, 0u);
+    EXPECT_TRUE(cli::parse_u64("2000000", v));
+    EXPECT_EQ(v, 2'000'000u);
+    v = 7;
+    for (const char* bad : {"", "abc", "12abc", "-1", "+5", " 5", "99999999999999999999999"}) {
+        EXPECT_FALSE(cli::parse_u64(bad, v)) << "accepted '" << bad << "'";
+        EXPECT_EQ(v, 7u) << "changed the output on '" << bad << "'";
+    }
+    EXPECT_FALSE(cli::parse_u64(nullptr, v));
 }
 
 TEST(OrderFlowGenerator, IsDeterministicForASeed) {

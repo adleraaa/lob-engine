@@ -35,6 +35,15 @@ public:
 
     void release(T* object) { free_.push_back(object); }
 
+    // Adds chunks until at least `count` objects exist, so the first `count`
+    // acquire() calls do not allocate (used by the benchmark to keep chunk
+    // allocations out of the timed region).
+    void reserve(std::size_t count) {
+        while (capacity() < count) {
+            add_chunk();
+        }
+    }
+
     std::size_t capacity() const { return chunks_.size() * chunk_size_; }
     std::size_t in_use() const { return capacity() - free_.size(); }
 

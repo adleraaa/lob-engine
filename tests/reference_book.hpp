@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <vector>
 
 #include "lob/events.hpp"
@@ -126,6 +127,10 @@ public:
 
     std::size_t order_count() const { return orders_.size(); }
 
+    // Highest bid / lowest ask, by scanning every order.
+    std::optional<Price> best_bid() const { return best_price(Side::Buy); }
+    std::optional<Price> best_ask() const { return best_price(Side::Sell); }
+
 private:
     struct Resting {
         OrderId id;
@@ -151,6 +156,15 @@ private:
             }
             const bool better_price = taker_side == Side::Buy ? r.price < best->price : r.price > best->price;
             if (better_price || (r.price == best->price && r.seq < best->seq)) best = &r;
+        }
+        return best;
+    }
+
+    std::optional<Price> best_price(Side side) const {
+        std::optional<Price> best;
+        for (const Resting& r : orders_) {
+            if (r.side != side) continue;
+            if (!best || (side == Side::Buy ? r.price > *best : r.price < *best)) best = r.price;
         }
         return best;
     }

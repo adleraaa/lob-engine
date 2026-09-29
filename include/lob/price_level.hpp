@@ -2,7 +2,6 @@
 #pragma once
 
 #include <cassert>
-#include <cstddef>
 
 #include "lob/types.hpp"
 
@@ -31,12 +30,11 @@ struct Order {
 // All resting orders at one price, oldest first. Does not own the orders.
 //
 // Invariants:
-//   - head == nullptr  <=>  tail == nullptr  <=>  count == 0
+//   - head == nullptr  <=>  tail == nullptr  (the level is empty)
 //   - total_qty == sum of qty over the queue
 struct PriceLevel {
     Price price = 0;
     Qty total_qty = 0;
-    std::size_t count = 0;
     Order* head = nullptr;  // oldest: next to trade
     Order* tail = nullptr;  // newest
 
@@ -55,7 +53,6 @@ struct PriceLevel {
         }
         tail = order;
         total_qty += order->qty;
-        ++count;
     }
 
     // Unlinks an order from anywhere in the queue in O(1).
@@ -72,7 +69,6 @@ struct PriceLevel {
             tail = order->prev;
         }
         total_qty -= order->qty;
-        --count;
         order->prev = order->next = nullptr;
         order->level = nullptr;
     }

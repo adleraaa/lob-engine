@@ -34,6 +34,17 @@ public:
     std::size_t size() const { return size_; }
     std::size_t capacity() const { return slots_.size(); }
 
+    // Grows the table now so that `count` ids fit without a later resize.
+    void reserve(std::size_t count) {
+        while (count * 2 > slots_.size()) {
+            grow();
+        }
+    }
+
+    // The slot where a lookup for `id` starts. Public only so the tests can
+    // pick ids that collide on purpose.
+    std::size_t home_slot(OrderId id) const { return home(id); }
+
     // nullptr if the id is not present.
     Order* find(OrderId id) const {
         assert(id != 0);
@@ -76,20 +87,27 @@ public:
             }
             hole = (hole + 1) & mask_;
         }
-        // Backward shift: walk the rest of the probe cluster and move back any
-        // entry whose home slot is at or before the hole (cyclically), so that
-        // no later lookup stops early at the hole we are about to create.
+        // Backward shift. Invariant of linear probing: every entry sits in its
+        // home slot or after it, with no empty slot in between (a lookup stops
+        // at the first empty slot). Emptying `hole` could break that for the
+        // entries that follow it in the same cluster, so we walk the cluster
+        // and move an entry back into the hole whenever that is legal.
         std::size_t next = hole;
         while (true) {
             next = (next + 1) & mask_;
             if (slots_[next].key == 0) {
-                break;
+                break;  // end of the cluster: nothing after this can be cut off
             }
-            std::size_t want = home(slots_[next].key);
-            // Distance from each slot's home to where it sits now; the entry
-            // can move into the hole only if the hole is not "before" its home.
-            std::size_t dist_to_hole = (hole - want) & mask_;
-            std::size_t dist_to_next = (next - want) & mask_;
+            const std::size_t want = home(slots_[next].key);
+            // Distances are measured forward from the entry's home, modulo the
+            // table size (the "& mask_" makes wrap-around at the end of the
+            // array work). The entry at `next` may move into the hole only if
+            // the hole lies on its probe path, i.e. between its home and its
+            // current slot: then a lookup starting at `want` reaches the hole
+            // before `next`. If the hole is before its home (dist_to_hole >
+            // dist_to_next after wrapping), moving it would hide it.
+            const std::size_t dist_to_hole = (hole - want) & mask_;
+            const std::size_t dist_to_next = (next - want) & mask_;
             if (dist_to_hole < dist_to_next) {
                 slots_[hole] = slots_[next];
                 hole = next;
