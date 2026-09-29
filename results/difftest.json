@@ -1,15 +1,70 @@
 {
   "result": "all books identical",
-  "scenarios": 4,
+  "build": {"git_sha": "f6cd55722ebc", "compiler": "GCC 16.2.0", "build_type": "Release", "flags": "-O3 -DNDEBUG -std=c++20", "link_flags": "-static", "assertions": false, "os": "Windows"},
   "seeds_per_scenario": 3,
   "first_seed": 1,
   "requests_per_run": 1000000,
-  "total_requests": 12000000,
-  "trades_compared": 2458742,
-  "level_updates_compared": 11088470,
-  "rejected_requests": 2071152,
-  "requests_by_status": {"Ok": 9928848, "InvalidId": 19985, "InvalidQty": 19976, "InvalidPrice": 19994, "PriceOutOfRange": 0, "DuplicateId": 13557, "UnknownId": 1997640},
-  "full_snapshot_comparisons": 12000,
-  "max_resting_orders_seen": 737,
-  "wall_seconds": 27.0063
+  "total": {
+    "requests": 15000000,
+    "trades_compared": 3114030,
+    "level_updates_compared": 13849530,
+    "rejected_requests": 2660058,
+    "requests_by_status": {"Ok": 12339942, "InvalidId": 20769, "InvalidQty": 20700, "InvalidPrice": 20637, "PriceOutOfRange": 34634, "DuplicateId": 13914, "UnknownId": 2549404},
+    "by_request_kind": {"add": {"Ok": 7691262, "InvalidId": 20769, "InvalidQty": 20700, "InvalidPrice": 20637, "PriceOutOfRange": 20829, "DuplicateId": 13914, "UnknownId": 0}, "cancel": {"Ok": 3987472, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 2261452}, "modify": {"Ok": 661208, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 13805, "DuplicateId": 0, "UnknownId": 287952}},
+    "full_snapshot_comparisons": 15000,
+    "max_resting_orders_seen": 740
+  },
+  "scenarios": {
+    "balanced": {
+      "requests": 3000000,
+      "trades_compared": 572621,
+      "level_updates_compared": 2831115,
+      "rejected_requests": 472723,
+      "requests_by_status": {"Ok": 2527277, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 472723},
+      "by_request_kind": {"add": {"Ok": 1536812, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 0}, "cancel": {"Ok": 910068, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 434498}, "modify": {"Ok": 80397, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 38225}},
+      "full_snapshot_comparisons": 3000,
+      "max_resting_orders_seen": 736
+    },
+    "aggressive": {
+      "requests": 3000000,
+      "trades_compared": 1112247,
+      "level_updates_compared": 2455163,
+      "rejected_requests": 860272,
+      "requests_by_status": {"Ok": 2139728, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 860272},
+      "by_request_kind": {"add": {"Ok": 1758912, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 0}, "cancel": {"Ok": 339176, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 766213}, "modify": {"Ok": 41640, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 94059}},
+      "full_snapshot_comparisons": 3000,
+      "max_resting_orders_seen": 362
+    },
+    "passive_modify_heavy": {
+      "requests": 3000000,
+      "trades_compared": 223735,
+      "level_updates_compared": 3084517,
+      "rejected_requests": 170344,
+      "requests_by_status": {"Ok": 2829656, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 170344},
+      "by_request_kind": {"add": {"Ok": 1401466, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 0}, "cancel": {"Ok": 1037947, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 123829}, "modify": {"Ok": 390243, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 46515}},
+      "full_snapshot_comparisons": 3000,
+      "max_resting_orders_seen": 71
+    },
+    "with_invalid_requests": {
+      "requests": 3000000,
+      "trades_compared": 550987,
+      "level_updates_compared": 2718163,
+      "rejected_requests": 569392,
+      "requests_by_status": {"Ok": 2430608, "InvalidId": 14842, "InvalidQty": 14901, "InvalidPrice": 14751, "PriceOutOfRange": 24948, "DuplicateId": 10164, "UnknownId": 489786},
+      "by_request_kind": {"add": {"Ok": 1480772, "InvalidId": 14842, "InvalidQty": 14901, "InvalidPrice": 14751, "PriceOutOfRange": 14802, "DuplicateId": 10164, "UnknownId": 0}, "cancel": {"Ok": 873118, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 433288}, "modify": {"Ok": 76718, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 10146, "DuplicateId": 0, "UnknownId": 56498}},
+      "full_snapshot_comparisons": 3000,
+      "max_resting_orders_seen": 740
+    },
+    "edge_range": {
+      "requests": 3000000,
+      "trades_compared": 654440,
+      "level_updates_compared": 2760572,
+      "rejected_requests": 587327,
+      "requests_by_status": {"Ok": 2412673, "InvalidId": 5927, "InvalidQty": 5799, "InvalidPrice": 5886, "PriceOutOfRange": 9686, "DuplicateId": 3750, "UnknownId": 556279},
+      "by_request_kind": {"add": {"Ok": 1513300, "InvalidId": 5927, "InvalidQty": 5799, "InvalidPrice": 5886, "PriceOutOfRange": 6027, "DuplicateId": 3750, "UnknownId": 0}, "cancel": {"Ok": 827163, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 503624}, "modify": {"Ok": 72210, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 3659, "DuplicateId": 0, "UnknownId": 52655}},
+      "full_snapshot_comparisons": 3000,
+      "max_resting_orders_seen": 53
+    }
+  },
+  "wall_seconds": 77.4204
 }
