@@ -48,12 +48,22 @@ $started = Get-Date
 $exit = $LASTEXITCODE
 $finished = Get-Date
 Stop-Job $sampler
-$during = @(Receive-Job $sampler)
+# Cast to plain numbers: job output carries PowerShell metadata properties
+# that would otherwise end up in the JSON.
+$during = @(Receive-Job $sampler | ForEach-Object { [double]$_ })
 Remove-Job $sampler
 if ($exit -ne 0) { Write-Error "lob_bench failed with exit code $exit" }
 
 $battery = Get-CimInstance Win32_Battery | Select-Object -First 1
-$plan = (powercfg /getactivescheme) -join " "
+# powercfg prints a localized sentence in the console code page, so keep only
+# the scheme GUID and name the three built-in Windows schemes.
+$planGuid = ((powercfg /getactivescheme) -join " ") -replace '.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*', '$1'
+$knownPlans = @{
+    '381b4222-f694-41f0-9685-ff5bb260df2e' = 'Balanced'
+    '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c' = 'High performance'
+    'a1841308-3541-4fab-bc81-f71556f20b4a' = 'Power saver'
+}
+$plan = if ($knownPlans.ContainsKey($planGuid)) { "$($knownPlans[$planGuid]) ($planGuid)" } else { $planGuid }
 $sorted = $during | Sort-Object
 $conditions = [ordered]@{
     started               = $started.ToString("s")
