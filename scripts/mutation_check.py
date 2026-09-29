@@ -119,6 +119,7 @@ def build_and_run(mutation: Mutation, cxx: str, ops: int, work: Path) -> tuple[b
     run = subprocess.run([str(exe), "--ops", str(ops), "--seeds", "1"], capture_output=True, text=True, timeout=600)
     output = (run.stderr or run.stdout).strip().splitlines()
     detail = output[0] if output else f"exit code {run.returncode}"
+    detail = detail.replace(str(work), "<tmp>")  # keep local paths out of the committed report
     return run.returncode != 0, detail
 
 
@@ -143,7 +144,8 @@ def main() -> int:
         summary = {"ops_per_scenario": args.ops, "caught": caught_count, "total": len(rows), "mutations": rows}
         (args.out / "mutation_check.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
         lines = [
-            f"Difftest run per mutant: 4 scenarios x 1 seed x {args.ops} requests.",
+            f"Difftest run per mutant: 4 scenarios x 1 seed x {args.ops} requests, "
+            "built with -O2 and assertions enabled (no NDEBUG).",
             "",
             "| mutation | injected bug | caught | first report |",
             "|---|---|---|---|",
