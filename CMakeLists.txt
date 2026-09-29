@@ -15,10 +15,42 @@ option(LOB_BUILD_BENCH "Build the benchmark" ON)
 option(LOB_WERROR "Treat compiler warnings as errors" OFF)
 option(LOB_SANITIZE "Build everything with AddressSanitizer + UndefinedBehaviorSanitizer" OFF)
 
+set(LOB_LINK_FLAGS "")
 if(MINGW)
   # Link the C++ runtime statically so the executables do not pick up an
   # incompatible libstdc++-6.dll from some other MinGW earlier on PATH.
   add_link_options(-static)
+  set(LOB_LINK_FLAGS "-static")
+endif()
+
+# Source revision recorded in the results files. Read at configure time; the
+# configure step re-runs automatically when HEAD, the current branch or the
+# git index changes. "-dirty" marks uncommitted changes to tracked files.
+set(LOB_GIT_SHA "unknown")
+find_package(Git QUIET)
+if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+  execute_process(
+    COMMAND "${GIT_EXECUTABLE}" rev-parse --short=12 HEAD
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    OUTPUT_VARIABLE LOB_GIT_SHA OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+  execute_process(
+    COMMAND "${GIT_EXECUTABLE}" status --porcelain --untracked-files=no
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    OUTPUT_VARIABLE _git_status OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+  if(_git_status)
+    string(APPEND LOB_GIT_SHA "-dirty")
+  endif()
+  file(READ "${CMAKE_CURRENT_SOURCE_DIR}/.git/HEAD" _git_head)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/.git/HEAD")
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git/index")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/.git/index")
+  endif()
+  if(_git_head MATCHES "^ref: (.+)")
+    string(STRIP "${CMAKE_MATCH_1}" _git_ref)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git/${_git_ref}")
+      set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/.git/${_git_ref}")
+    endif()
+  endif()
 endif()
 
 if(LOB_SANITIZE)
@@ -40,10 +72,18 @@ if(LOB_WERROR)
   target_compile_options(lob_warnings INTERFACE -Werror)
 endif()
 
-# Shared by the tests and the benchmark: the synthetic order-flow generator.
+# Shared by the tests and the benchmark: the synthetic order-flow generator,
+# CLI helpers and the build-provenance macros that go into results files.
 add_library(lob_tools INTERFACE)
 target_include_directories(lob_tools INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
 target_link_libraries(lob_tools INTERFACE lob)
+string(TOUPPER "${CMAKE_BUILD_TYPE}" _build_type_upper)
+string(STRIP "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${_build_type_upper}} -std=c++20" _flags)
+target_compile_definitions(lob_tools INTERFACE
+  LOB_GIT_SHA="${LOB_GIT_SHA}"
+  LOB_BUILD_TYPE="${CMAKE_BUILD_TYPE}"
+  LOB_BUILD_FLAGS="${_flags}"
+  LOB_LINK_FLAGS="${LOB_LINK_FLAGS}")
 
 if(LOB_BUILD_TESTS)
   include(FetchContent)
@@ -69,12 +109,14 @@ if(LOB_BUILD_TESTS)
   target_link_libraries(lob_difftest PRIVATE lob lob_tools lob_warnings)
   # A quick run on every `ctest`; the long run is a separate command (README).
   add_test(NAME difftest_quick COMMAND lob_difftest --ops 20000 --seeds 2)
+  # A correctness gate must not turn a typo into "0 requests, OK".
+  add_test(NAME difftest_rejects_bad_number COMMAND lob_difftest --ops abc)
+  add_test(NAME difftest_rejects_missing_value COMMAND lob_difftest --ops)
+  set_tests_properties(difftest_rejects_bad_number difftest_rejects_missing_value
+    PROPERTIES PASS_REGULAR_EXPRESSION "bad value|missing value")
 endif()
 
 if(LOB_BUILD_BENCH)
   add_executable(lob_bench bench/bench.cpp)
   target_link_libraries(lob_bench PRIVATE lob lob_tools lob_warnings)
-  string(TOUPPER "${CMAKE_BUILD_TYPE}" _build_type_upper)
-  string(STRIP "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${_build_type_upper}} -std=c++20" _flags)
-  target_compile_definitions(lob_bench PRIVATE LOB_BUILD_FLAGS="${_flags}")
 endif()

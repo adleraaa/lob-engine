@@ -3,7 +3,14 @@
 For each hand-written mutation (a small, plausible bug) this script copies the
 engine headers to a scratch directory, applies the mutation, compiles
 tests/difftest.cpp against the mutated headers and runs it. A mutation counts
-as "caught" if the difftest exits non-zero (a reported mismatch or a crash).
+as "caught" if the difftest exits non-zero. Each catch is labelled with how it
+was caught: "mismatch" (the difftest's result comparison reported a
+difference) or "crash" (the program died without reporting one).
+
+Mutants are built with -DNDEBUG, like a Release build, so the engine's own
+assert() checks are off and cannot take credit for a catch. The unmutated
+difftest is built and run the same way first; it must pass, otherwise every
+mutant would look "caught".
 
 Usage: python scripts/mutation_check.py [--cxx g++] [--ops 20000] [--out results]
 """
@@ -12,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import platform
 import shutil
 import subprocess
 import sys
@@ -56,8 +64,8 @@ MUTATIONS = [
     Mutation(
         "modify_down_no_event",
         "order_book.hpp",
-        "level->reduce(order, order->qty - new_qty);\n                listener_.on_level_update",
-        "level->reduce(order, order->qty - new_qty);\n                if (false) listener_.on_level_update",
+        "level->reduce(order, order->qty - new_qty);\n                notify_level",
+        "level->reduce(order, order->qty - new_qty);\n                if (false) notify_level",
         "modify-down changes the book but emits no level update",
     ),
     Mutation(
@@ -70,8 +78,8 @@ MUTATIONS = [
     Mutation(
         "level_total_not_reduced_on_erase",
         "price_level.hpp",
-        "        total_qty -= order->qty;\n        --count;",
-        "        --count;",
+        "        total_qty -= order->qty;\n        order->prev = order->next = nullptr;",
+        "        order->prev = order->next = nullptr;",
         "removing an order does not subtract its quantity from the level total",
     ),
     Mutation(
@@ -98,29 +106,62 @@ MUTATIONS = [
 ]
 
 
-def build_and_run(mutation: Mutation, cxx: str, ops: int, work: Path) -> tuple[bool, str]:
-    include = work / "include"
-    if include.exists():
-        shutil.rmtree(include)
-    shutil.copytree(ROOT / "include", include)
-    target = include / "lob" / mutation.file
-    source = target.read_text(encoding="utf-8")
-    if source.count(mutation.old) != 1:
-        raise SystemExit(f"{mutation.name}: pattern must occur exactly once in {mutation.file}")
-    target.write_text(source.replace(mutation.old, mutation.new), encoding="utf-8")
-
-    exe = work / ("difftest_mutant.exe" if sys.platform == "win32" else "difftest_mutant")
-    cmd = [cxx, "-std=c++20", "-O2", f"-I{include}", f"-I{ROOT / 'tools'}", f"-I{ROOT / 'tests'}"]
+def compile_difftest(include: Path, cxx: str, exe: Path) -> None:
+    cmd = [cxx, "-std=c++20", "-O2", "-DNDEBUG", f"-I{include}", f"-I{ROOT / 'tools'}", f"-I{ROOT / 'tests'}"]
     cmd += [str(ROOT / "tests" / "difftest.cpp"), "-o", str(exe)]
     if sys.platform == "win32":
         cmd.append("-static")  # avoid picking up a mismatched libstdc++ DLL
     subprocess.run(cmd, check=True)
 
-    run = subprocess.run([str(exe), "--ops", str(ops), "--seeds", "1"], capture_output=True, text=True, timeout=600)
+
+def run_difftest(exe: Path, ops: int, work: Path) -> tuple[bool, str, str]:
+    """Returns (caught, how, first line of output)."""
+    try:
+        run = subprocess.run([str(exe), "--ops", str(ops), "--seeds", "1"], capture_output=True, text=True, timeout=600)
+    except subprocess.TimeoutExpired:
+        return False, "timeout", "no result within 600 s"
     output = (run.stderr or run.stdout).strip().splitlines()
     detail = output[0] if output else f"exit code {run.returncode}"
     detail = detail.replace(str(work), "<tmp>")  # keep local paths out of the committed report
-    return run.returncode != 0, detail
+    if run.returncode == 0:
+        return False, "-", detail
+    how = "mismatch" if detail.startswith("MISMATCH") else "crash"
+    if how == "crash":
+        detail = f"exit code {run.returncode}: {detail}"
+    return True, how, detail
+
+
+def prepare_headers(work: Path, mutation: Mutation | None) -> Path:
+    include = work / "include"
+    if include.exists():
+        shutil.rmtree(include)
+    shutil.copytree(ROOT / "include", include)
+    if mutation is not None:
+        target = include / "lob" / mutation.file
+        source = target.read_text(encoding="utf-8")
+        if source.count(mutation.old) != 1:
+            raise SystemExit(f"{mutation.name}: pattern must occur exactly once in {mutation.file}")
+        target.write_text(source.replace(mutation.old, mutation.new), encoding="utf-8")
+    return include
+
+
+def provenance(cxx: str) -> dict[str, str]:
+    def first_line(cmd: list[str]) -> str:
+        try:
+            out = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT, check=True).stdout
+        except (OSError, subprocess.CalledProcessError):
+            return "unknown"
+        return out.strip().splitlines()[0] if out.strip() else ""
+
+    sha = first_line(["git", "rev-parse", "--short=12", "HEAD"])
+    if first_line(["git", "status", "--porcelain", "--untracked-files=no"]):
+        sha += "-dirty"
+    return {
+        "git_sha": sha,
+        "compiler": first_line([cxx, "--version"]),
+        "flags": "-std=c++20 -O2 -DNDEBUG" + (" -static" if sys.platform == "win32" else ""),
+        "os": platform.system(),
+    }
 
 
 def main() -> int:
@@ -132,28 +173,54 @@ def main() -> int:
 
     rows = []
     with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        exe = work / ("difftest_mutant.exe" if sys.platform == "win32" else "difftest_mutant")
+
+        compile_difftest(prepare_headers(work, None), args.cxx, exe)
+        failed, _, detail = run_difftest(exe, args.ops, work)
+        if failed:
+            raise SystemExit(f"the unmutated difftest fails, so nothing can be concluded: {detail}")
+        print(f"baseline (no mutation) passes: {detail}")
+
         for mutation in MUTATIONS:
-            caught, detail = build_and_run(mutation, args.cxx, args.ops, Path(tmp))
-            print(f"{'CAUGHT ' if caught else 'MISSED '} {mutation.name}: {detail}")
-            rows.append({"mutation": mutation.name, "bug": mutation.bug, "caught": caught, "detail": detail})
+            compile_difftest(prepare_headers(work, mutation), args.cxx, exe)
+            caught, how, detail = run_difftest(exe, args.ops, work)
+            print(f"{'CAUGHT ' if caught else 'MISSED '} ({how}) {mutation.name}: {detail}")
+            rows.append(
+                {"mutation": mutation.name, "bug": mutation.bug, "caught": caught, "how": how, "detail": detail}
+            )
 
     caught_count = sum(r["caught"] for r in rows)
-    print(f"{caught_count}/{len(rows)} mutations caught by the difftest")
+    by_mismatch = sum(r["how"] == "mismatch" for r in rows)
+    print(f"{caught_count}/{len(rows)} mutations caught by the difftest ({by_mismatch} by result mismatch)")
     if args.out:
         args.out.mkdir(parents=True, exist_ok=True)
-        summary = {"ops_per_scenario": args.ops, "caught": caught_count, "total": len(rows), "mutations": rows}
-        (args.out / "mutation_check.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+        summary = {
+            "build": provenance(args.cxx),
+            "ops_per_scenario": args.ops,
+            "caught": caught_count,
+            "caught_by_mismatch": by_mismatch,
+            "total": len(rows),
+            "mutations": rows,
+        }
+        (args.out / "mutation_check.json").write_text(
+            json.dumps(summary, indent=2) + "\n", encoding="utf-8", newline="\n"
+        )
+        b = summary["build"]
         lines = [
-            f"Difftest run per mutant: 4 scenarios x 1 seed x {args.ops} requests, "
-            "built with -O2 and assertions enabled (no NDEBUG).",
+            f"Difftest run per mutant: every scenario x 1 seed x {args.ops} requests, built with "
+            f"`{b['flags']}` (assertions off). Source {b['git_sha']}, {b['compiler']}, {b['os']}.",
             "",
-            "| mutation | injected bug | caught | first report |",
-            "|---|---|---|---|",
+            f"Caught: {caught_count} / {len(rows)}, of which {by_mismatch} by a result mismatch "
+            "(the rest, if any, by a crash).",
+            "",
+            "| mutation | injected bug | caught | how | first report |",
+            "|---|---|---|---|---|",
         ]
         for r in rows:
             detail = r["detail"].replace("|", "/")
-            lines.append(f"| {r['mutation']} | {r['bug']} | {'yes' if r['caught'] else 'no'} | {detail} |")
-        (args.out / "mutation_check.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+            lines.append(f"| {r['mutation']} | {r['bug']} | {'yes' if r['caught'] else 'no'} | {r['how']} | {detail} |")
+        (args.out / "mutation_check.md").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     return 0 if caught_count == len(rows) else 1
 
 

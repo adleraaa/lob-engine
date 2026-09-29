@@ -139,14 +139,23 @@ private:
         return p < cfg_.min_price ? cfg_.min_price : (p > cfg_.max_price ? cfg_.max_price : p);
     }
 
-    // Random walk of the mid price, kept far enough from the edges that
-    // generated prices never need clamping in practice.
+    // Random walk of the mid price. With a wide range the mid is kept far
+    // enough from the edges that generated prices never need clamping. With
+    // a range narrower than the price spread (the difftest's edge scenario)
+    // the mid just stays inside the range, and clamp() piles orders onto the
+    // lowest and highest allowed prices, which is the point of that scenario.
     void drift_mid() {
         if (rng_.chance(0.01)) {
             mid_ += rng_.chance(0.5) ? 1 : -1;
             const Price margin = cfg_.passive_depth + cfg_.cross_depth + 1;
-            if (mid_ < cfg_.min_price + margin) mid_ = cfg_.min_price + margin;
-            if (mid_ > cfg_.max_price - margin) mid_ = cfg_.max_price - margin;
+            Price lo = cfg_.min_price + margin;
+            Price hi = cfg_.max_price - margin;
+            if (lo > hi) {
+                lo = cfg_.min_price;
+                hi = cfg_.max_price;
+            }
+            if (mid_ < lo) mid_ = lo;
+            if (mid_ > hi) mid_ = hi;
         }
     }
 
@@ -201,25 +210,48 @@ private:
         return Op{Op::Kind::Modify, t.id, t.side, OrderType::Limit, t.price, random_qty()};
     }
 
+    // Requests the book must reject. The comment on each case names the
+    // expected Status. Cases 3 and 6 target a tracked id, so they also check
+    // "reject without side effects" against an order that is really resting;
+    // if that order already filled, the book answers differently (see there).
     Op invalid_op() {
         const Side side = random_side();
-        switch (rng_.uniform(0, 5)) {
-            case 0: return Op{Op::Kind::Add, next_id_++, side, OrderType::Limit, passive_price(side), 0};
-            case 1: return Op{Op::Kind::Add, next_id_++, side, OrderType::Limit, 0, random_qty()};
-            case 2: return Op{Op::Kind::Add, 0, side, OrderType::Limit, passive_price(side), random_qty()};
-            case 3:  // re-use an id that may still be resting -> DuplicateId
-                // (IOC, so that if the old order is already gone this valid
-                // request cannot leave an order the generator does not track)
+        switch (rng_.uniform(0, 7)) {
+            case 0:  // InvalidQty
+                return Op{Op::Kind::Add, next_id_++, side, OrderType::Limit, passive_price(side), 0};
+            case 1:  // InvalidPrice
+                return Op{Op::Kind::Add, next_id_++, side, OrderType::Limit, 0, random_qty()};
+            case 2:  // InvalidId
+                return Op{Op::Kind::Add, 0, side, OrderType::Limit, passive_price(side), random_qty()};
+            case 3:  // DuplicateId if the tracked order still rests. IOC, so that
+                     // if it is already gone this now-valid request cannot leave
+                     // an order the generator does not track.
                 if (!tracked_.empty()) {
-                    const Tracked& t = tracked_[static_cast<std::size_t>(
-                        rng_.uniform(0, static_cast<std::int64_t>(tracked_.size()) - 1))];
+                    const Tracked& t = random_tracked();
                     return Op{Op::Kind::Add, t.id, side, OrderType::IOC, passive_price(side), random_qty()};
                 }
-                return Op{Op::Kind::Cancel, next_id_ + 1'000'000, side, OrderType::Limit, 0, 0};
-            case 4: return Op{Op::Kind::Cancel, next_id_ + 1'000'000, side, OrderType::Limit, 0, 0};
-            default: return Op{Op::Kind::Modify, next_id_ + 1'000'000, side, OrderType::Limit, mid_, random_qty()};
+                return unknown_cancel();
+            case 4:  // UnknownId (an id that was never used)
+                return unknown_cancel();
+            case 5:  // UnknownId on a modify
+                return Op{Op::Kind::Modify, next_id_ + 1'000'000, side, OrderType::Limit, mid_, random_qty()};
+            case 6:  // PriceOutOfRange on a modify (UnknownId if the order already filled)
+                if (!tracked_.empty()) {
+                    const Tracked& t = random_tracked();
+                    return Op{Op::Kind::Modify, t.id, t.side, OrderType::Limit, cfg_.max_price + 1, random_qty()};
+                }
+                return unknown_cancel();
+            default:  // PriceOutOfRange on a new order
+                return Op{Op::Kind::Add, next_id_++, side, OrderType::Limit, cfg_.max_price + rng_.uniform(1, 50),
+                          random_qty()};
         }
     }
+
+    const Tracked& random_tracked() {
+        return tracked_[static_cast<std::size_t>(rng_.uniform(0, static_cast<std::int64_t>(tracked_.size()) - 1))];
+    }
+
+    Op unknown_cancel() const { return Op{Op::Kind::Cancel, next_id_ + 1'000'000, Side::Buy, OrderType::Limit, 0, 0}; }
 
     void track(const Tracked& t) { tracked_.push_back(t); }
 
