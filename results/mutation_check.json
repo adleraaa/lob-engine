@@ -1,0 +1,61 @@
+{
+  "ops_per_scenario": 20000,
+  "caught": 9,
+  "total": 9,
+  "mutations": [
+    {
+      "mutation": "limit_boundary",
+      "bug": "a buy order does not trade at exactly its limit price",
+      "caught": true,
+      "detail": "MISMATCH (exec report) scenario=balanced seed=1 op#57: add id=39 side=buy type=Limit price=9996 qty=61"
+    },
+    {
+      "mutation": "lifo_queue",
+      "bug": "newest order at a price trades first (LIFO instead of FIFO)",
+      "caught": true,
+      "detail": "MISMATCH (trades) scenario=balanced seed=1 op#84: add id=57 side=buy type=IOC price=10007 qty=36"
+    },
+    {
+      "mutation": "modify_same_qty_requeues",
+      "bug": "modify to the same quantity sends the order to the back of the queue",
+      "caught": true,
+      "detail": "MISMATCH (level updates) scenario=balanced seed=1 op#5620: modify id=2974 side=buy type=Limit price=9992 qty=10"
+    },
+    {
+      "mutation": "modify_down_no_event",
+      "bug": "modify-down changes the book but emits no level update",
+      "caught": true,
+      "detail": "MISMATCH (level updates) scenario=balanced seed=1 op#27: modify id=11 side=buy type=Limit price=9980 qty=63"
+    },
+    {
+      "mutation": "fok_exact_liquidity_killed",
+      "bug": "FOK is killed when available liquidity exactly equals its quantity",
+      "caught": true,
+      "detail": "MISMATCH (exec report) scenario=balanced seed=1 op#4305: add id=2724 side=buy type=FOK price=10003 qty=15"
+    },
+    {
+      "mutation": "level_total_not_reduced_on_erase",
+      "bug": "removing an order does not subtract its quantity from the level total",
+      "caught": true,
+      "detail": "MISMATCH (level updates) scenario=balanced seed=1 op#11: add id=7 side=sell type=Limit price=10036 qty=76"
+    },
+    {
+      "mutation": "map_best_bid_is_lowest",
+      "bug": "map book: best bid is the lowest bid instead of the highest",
+      "caught": true,
+      "detail": "MISMATCH (exec report) scenario=balanced seed=1 op#32: add id=22 side=sell type=Limit price=9999 qty=53"
+    },
+    {
+      "mutation": "flat_best_not_improved",
+      "bug": "flat book: a new better price does not become the best level",
+      "caught": true,
+      "detail": "Assertion failed: order->level == this && by > 0 && by < order->qty, file <tmp>\\include/lob/price_level.hpp, line 83"
+    },
+    {
+      "mutation": "idmap_no_backward_shift",
+      "bug": "hash map deletion leaves holes that cut probe chains",
+      "caught": true,
+      "detail": "MISMATCH (exec report) scenario=balanced seed=1 op#646: modify id=222 side=buy type=Limit price=9999 qty=38"
+    }
+  ]
+}
