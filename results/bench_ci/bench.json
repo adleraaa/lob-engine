@@ -1,0 +1,25 @@
+{
+  "build": {"git_sha": "c449771e295b", "compiler": "GCC 13.3.0", "build_type": "Release", "flags": "-O3 -DNDEBUG -std=c++20", "link_flags": "", "assertions": false, "os": "Linux"},
+  "environment": {
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "pinned_cpu": 1,
+    "timer_overhead_ns": 10.0151,
+    "requests_per_run": 2000000,
+    "throughput_reps": 11,
+    "latency_reps": 5,
+    "generator_seed": 2026
+  },
+  "workloads": {
+    "add_cancel": {"description": "passive-priced limit adds and cancels only (a few still trade when the mid drifts)", "generated_requests": 2156587, "dropped_unknown_id": 156587, "actual_fractions": {"limit": 0.5402, "market": 0.0000, "ioc": 0.0000, "fok": 0.0000, "cancel": 0.4598, "modify": 0.0000}, "fok_filled": 0, "fok_killed": 0, "requests_by_status": {"Ok": 2000000, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 0}},
+    "balanced": {"description": "mostly passive adds and cancels; 15% of limit adds cross; some modify/market/IOC/FOK", "generated_requests": 2430035, "dropped_unknown_id": 430035, "actual_fractions": {"limit": 0.5462, "market": 0.0287, "ioc": 0.0289, "fok": 0.0191, "cancel": 0.3465, "modify": 0.0306}, "fok_filled": 23818, "fok_killed": 14378, "requests_by_status": {"Ok": 2000000, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 0}},
+    "match_heavy": {"description": "aggressive flow: 40% of limit adds cross; more market/IOC/FOK", "generated_requests": 2808598, "dropped_unknown_id": 808598, "actual_fractions": {"limit": 0.5409, "market": 0.1081, "ioc": 0.1084, "fok": 0.0541, "cancel": 0.1715, "modify": 0.0171}, "fok_filled": 39781, "fok_killed": 68354, "requests_by_status": {"Ok": 2000000, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 0}}
+  },
+  "results": [
+    {"workload": "add_cancel", "book": "map", "requests": 2000000, "median_req_per_s": 14946683, "min_req_per_s": 14934184, "max_req_per_s": 14966374, "p50_ns": 60.0905, "p99_ns": 160.241, "p999_ns": 260.392, "max_ns": 72619.4, "trades": 155424, "traded_qty": 3980602, "level_updates": 2076961, "final_resting_orders": 3714},
+    {"workload": "add_cancel", "book": "flat", "requests": 2000000, "median_req_per_s": 21423279, "min_req_per_s": 21402640, "max_req_per_s": 21467780, "p50_ns": 40.0604, "p99_ns": 140.211, "p999_ns": 230.347, "max_ns": 53931.3, "trades": 155424, "traded_qty": 3980602, "level_updates": 2076961, "final_resting_orders": 3714},
+    {"workload": "balanced", "book": "map", "requests": 2000000, "median_req_per_s": 15089422, "min_req_per_s": 15065153, "max_req_per_s": 15116981, "p50_ns": 60.0905, "p99_ns": 200.302, "p999_ns": 310.468, "max_ns": 52158.6, "trades": 508860, "traded_qty": 13010720, "level_updates": 2265026, "final_resting_orders": 2782},
+    {"workload": "balanced", "book": "flat", "requests": 2000000, "median_req_per_s": 22647017, "min_req_per_s": 22626144, "max_req_per_s": 22672217, "p50_ns": 30.0453, "p99_ns": 160.241, "p999_ns": 240.362, "max_ns": 34161.5, "trades": 508860, "traded_qty": 13010720, "level_updates": 2265026, "final_resting_orders": 2782},
+    {"workload": "match_heavy", "book": "map", "requests": 2000000, "median_req_per_s": 14938542, "min_req_per_s": 14916334, "max_req_per_s": 14969977, "p50_ns": 50.0755, "p99_ns": 220.332, "p999_ns": 320.483, "max_ns": 34902.6, "trades": 1061780, "traded_qty": 27249060, "level_updates": 2370992, "final_resting_orders": 1387},
+    {"workload": "match_heavy", "book": "flat", "requests": 2000000, "median_req_per_s": 23442483, "min_req_per_s": 23391968, "max_req_per_s": 23474614, "p50_ns": 30.0453, "p99_ns": 150.226, "p999_ns": 210.317, "max_ns": 64206.7, "trades": 1061780, "traded_qty": 27249060, "level_updates": 2370992, "final_resting_orders": 1387}
+  ]
+}
