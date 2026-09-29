@@ -154,7 +154,9 @@ def provenance(cxx: str) -> dict[str, str]:
         return out.strip().splitlines()[0] if out.strip() else ""
 
     sha = first_line(["git", "rev-parse", "--short=12", "HEAD"])
-    if first_line(["git", "status", "--porcelain", "--untracked-files=no"]):
+    # Uncommitted changes to tracked source files; freshly regenerated
+    # results/ files do not count, since they are outputs, not inputs.
+    if first_line(["git", "status", "--porcelain", "--untracked-files=no", "--", ".", ":(exclude)results"]):
         sha += "-dirty"
     return {
         "git_sha": sha,
