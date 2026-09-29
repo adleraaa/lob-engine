@@ -22,7 +22,8 @@ struct Op {
     Qty qty = 0;      // Add: quantity; Modify: new quantity
 };
 
-// Probabilities per generated request. Whatever is not cancel/modify/market/
+// Probabilities per generated request (before the forced cancels described
+// at Config::max_live_ids). Whatever is not cancel/modify/market/
 // ioc/fok is a Limit add. `cross` is the chance that a Limit add is priced to
 // trade immediately instead of joining the passive side of the book.
 struct Mix {
@@ -90,20 +91,26 @@ public:
         if (rng_.chance(m.invalid)) {
             return invalid_op();
         }
+        // Walk the cumulative probabilities. Cancel/modify need a remembered
+        // order; before the first Limit add they fall back to a Limit add.
         double roll = static_cast<double>(rng_.next() >> 11) * 0x1.0p-53;
-        if ((roll -= m.cancel) < 0 && !tracked_.empty()) {
-            return cancel_op();
+        if (roll < m.cancel) {
+            return tracked_.empty() ? limit_op() : cancel_op();
         }
-        if ((roll -= m.modify) < 0 && !tracked_.empty()) {
-            return modify_op();
+        roll -= m.cancel;
+        if (roll < m.modify) {
+            return tracked_.empty() ? limit_op() : modify_op();
         }
-        if ((roll -= m.market) < 0) {
+        roll -= m.modify;
+        if (roll < m.market) {
             return taker_op(OrderType::Market);
         }
-        if ((roll -= m.ioc) < 0) {
+        roll -= m.market;
+        if (roll < m.ioc) {
             return taker_op(OrderType::IOC);
         }
-        if ((roll -= m.fok) < 0) {
+        roll -= m.ioc;
+        if (roll < m.fok) {
             return taker_op(OrderType::FOK);
         }
         return limit_op();

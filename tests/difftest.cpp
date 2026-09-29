@@ -53,11 +53,14 @@ std::vector<Scenario> scenarios() {
     return list;
 }
 
+constexpr int kStatusCount = static_cast<int>(Status::UnknownId) + 1;
+
 struct Totals {
     std::uint64_t ops = 0;
     std::uint64_t trades = 0;
     std::uint64_t level_updates = 0;
     std::uint64_t rejected = 0;
+    std::uint64_t by_status[kStatusCount] = {};  // indexed by Status
     std::uint64_t snapshot_checks = 0;
     std::size_t max_resting_orders = 0;
 };
@@ -130,6 +133,7 @@ bool run(const Scenario& scenario, std::uint64_t seed, std::size_t op_count, Tot
         totals.trades += ref_events.trades.size();
         totals.level_updates += ref_events.updates.size();
         totals.rejected += want.status != Status::Ok ? 1 : 0;
+        ++totals.by_status[static_cast<int>(want.status)];
         ref_events.clear();
         map_events.clear();
         flat_events.clear();
@@ -192,6 +196,11 @@ int main(int argc, char** argv) {
             << "  \"trades_compared\": " << totals.trades << ",\n"
             << "  \"level_updates_compared\": " << totals.level_updates << ",\n"
             << "  \"rejected_requests\": " << totals.rejected << ",\n"
+            << "  \"requests_by_status\": {";
+        for (int st = 0; st < kStatusCount; ++st) {
+            out << (st ? ", " : "") << '"' << to_string(static_cast<Status>(st)) << "\": " << totals.by_status[st];
+        }
+        out << "},\n"
             << "  \"full_snapshot_comparisons\": " << totals.snapshot_checks << ",\n"
             << "  \"max_resting_orders_seen\": " << totals.max_resting_orders << ",\n"
             << "  \"wall_seconds\": " << seconds << "\n"
