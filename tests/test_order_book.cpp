@@ -233,28 +233,28 @@ protected:
 TYPED_TEST_SUITE(RangeTest, BookTypes);
 
 TYPED_TEST(RangeTest, RejectsPricesOutsideConfiguredRangeWithoutSideEffects) {
-    auto& book = this->book;
-    EXPECT_EQ(book.add(1, kBuy, OrderType::Limit, 99, 1).status, Status::PriceOutOfRange);
-    EXPECT_EQ(book.add(1, kBuy, OrderType::Limit, 201, 1).status, Status::PriceOutOfRange);
-    EXPECT_EQ(book.add(1, kBuy, OrderType::IOC, 201, 1).status, Status::PriceOutOfRange);
+    auto& b = this->book;
+    EXPECT_EQ(b.add(1, kBuy, OrderType::Limit, 99, 1).status, Status::PriceOutOfRange);
+    EXPECT_EQ(b.add(1, kBuy, OrderType::Limit, 201, 1).status, Status::PriceOutOfRange);
+    EXPECT_EQ(b.add(1, kBuy, OrderType::IOC, 201, 1).status, Status::PriceOutOfRange);
     EXPECT_TRUE(this->events.updates.empty());
 
-    EXPECT_EQ(book.add(1, kBuy, OrderType::Limit, 100, 1).status, Status::Ok);  // both ends are inside
-    EXPECT_EQ(book.add(2, kSell, OrderType::Limit, 200, 1).status, Status::Ok);
+    EXPECT_EQ(b.add(1, kBuy, OrderType::Limit, 100, 1).status, Status::Ok);  // both ends are inside
+    EXPECT_EQ(b.add(2, kSell, OrderType::Limit, 200, 1).status, Status::Ok);
     this->events.clear();
 
     // modify() removes the order before re-adding it, so it must validate the
     // new price first: a rejected modify must leave order 2 where it was.
-    EXPECT_EQ(book.modify(2, 201, 1).status, Status::PriceOutOfRange);
-    EXPECT_EQ(book.modify(2, 201, 5).status, Status::PriceOutOfRange);
+    EXPECT_EQ(b.modify(2, 201, 1).status, Status::PriceOutOfRange);
+    EXPECT_EQ(b.modify(2, 201, 5).status, Status::PriceOutOfRange);
     EXPECT_TRUE(this->events.updates.empty());
-    EXPECT_EQ(book.snapshot().asks, (std::vector<LevelView>{{200, {{2, 1}}}}));
+    EXPECT_EQ(b.snapshot().asks, (std::vector<LevelView>{{200, {{2, 1}}}}));
 
     // Market orders carry no price, so the range does not apply.
-    EXPECT_EQ(book.add(3, kSell, OrderType::Market, 0, 1), (ExecReport{Status::Ok, 1, 0, 0}));
+    EXPECT_EQ(b.add(3, kSell, OrderType::Market, 0, 1), (ExecReport{Status::Ok, 1, 0, 0}));
     EXPECT_EQ(this->events.trades, (std::vector<Trade>{{3, 1, kSell, 100, 1}}));
     EXPECT_EQ(this->events.updates, (std::vector<LevelUpdate>{{kBuy, 100, 0}}));
-    EXPECT_TRUE(book.snapshot().bids.empty());
+    EXPECT_TRUE(b.snapshot().bids.empty());
 }
 
 // ---- engine-only tests (the reference book has no such queries) -------------
