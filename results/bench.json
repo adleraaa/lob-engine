@@ -1,26 +1,25 @@
 {
+  "build": {"git_sha": "57a3ddc3e131", "compiler": "GCC 16.2.0", "build_type": "Release", "flags": "-O3 -DNDEBUG -std=c++20", "link_flags": "-static", "assertions": false, "os": "Windows"},
   "environment": {
     "cpu": "Intel(R) Core(TM) i9-14900HX",
-    "os": "Windows",
-    "compiler": "GCC 16.2.0",
-    "flags": "-O3 -DNDEBUG -std=c++20",
     "pinned_cpu": 4,
-    "timer_overhead_ns": 22.3214,
+    "timer_overhead_ns": 6.61373,
     "requests_per_run": 2000000,
     "throughput_reps": 11,
+    "latency_reps": 5,
     "generator_seed": 2026
   },
   "workloads": {
-    "add_cancel": {"description": "passive-priced limit adds and cancels only (a few still trade when the mid drifts)", "actual_fractions": {"limit": 0.5010, "market": 0.0000, "ioc": 0.0000, "fok": 0.0000, "cancel": 0.4990, "modify": 0.0000}},
-    "balanced": {"description": "mostly passive adds and cancels; 15% of limit adds cross; some modify/market/IOC/FOK", "actual_fractions": {"limit": 0.4497, "market": 0.0237, "ioc": 0.0238, "fok": 0.0157, "cancel": 0.4477, "modify": 0.0394}},
-    "match_heavy": {"description": "aggressive flow: 40% of limit adds cross; more market/IOC/FOK", "actual_fractions": {"limit": 0.3853, "market": 0.0771, "ioc": 0.0773, "fok": 0.0385, "cancel": 0.3833, "modify": 0.0385}}
+    "add_cancel": {"description": "passive-priced limit adds and cancels only (a few still trade when the mid drifts)", "generated_requests": 2156587, "dropped_unknown_id": 156587, "actual_fractions": {"limit": 0.5402, "market": 0.0000, "ioc": 0.0000, "fok": 0.0000, "cancel": 0.4598, "modify": 0.0000}, "fok_filled": 0, "fok_killed": 0, "requests_by_status": {"Ok": 2000000, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 0}},
+    "balanced": {"description": "mostly passive adds and cancels; 15% of limit adds cross; some modify/market/IOC/FOK", "generated_requests": 2430035, "dropped_unknown_id": 430035, "actual_fractions": {"limit": 0.5462, "market": 0.0287, "ioc": 0.0289, "fok": 0.0191, "cancel": 0.3465, "modify": 0.0306}, "fok_filled": 23818, "fok_killed": 14378, "requests_by_status": {"Ok": 2000000, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 0}},
+    "match_heavy": {"description": "aggressive flow: 40% of limit adds cross; more market/IOC/FOK", "generated_requests": 2808598, "dropped_unknown_id": 808598, "actual_fractions": {"limit": 0.5409, "market": 0.1081, "ioc": 0.1084, "fok": 0.0541, "cancel": 0.1715, "modify": 0.0171}, "fok_filled": 39781, "fok_killed": 68354, "requests_by_status": {"Ok": 2000000, "InvalidId": 0, "InvalidQty": 0, "InvalidPrice": 0, "PriceOutOfRange": 0, "DuplicateId": 0, "UnknownId": 0}}
   },
   "results": [
-    {"workload": "add_cancel", "book": "map", "requests": 2000000, "median_req_per_s": 7160474, "min_req_per_s": 5683397, "max_req_per_s": 11853137, "p50_ns": 74.8179, "p99_ns": 277.363, "p999_ns": 1180.14, "max_ns": 2.099e+07, "trades": 144648, "level_updates": 1926011, "final_resting_orders": 3626},
-    {"workload": "add_cancel", "book": "flat", "requests": 2000000, "median_req_per_s": 11376098, "min_req_per_s": 8865912, "max_req_per_s": 19624369, "p50_ns": 55.39, "p99_ns": 200.479, "p999_ns": 803.569, "max_ns": 1.61271e+07, "trades": 144648, "level_updates": 1926011, "final_resting_orders": 3626},
-    {"workload": "balanced", "book": "map", "requests": 2000000, "median_req_per_s": 11305566, "min_req_per_s": 10045839, "max_req_per_s": 13355119, "p50_ns": 69.0308, "p99_ns": 315.806, "p999_ns": 1053.24, "max_ns": 2.21871e+07, "trades": 420544, "level_updates": 1862863, "final_resting_orders": 2688},
-    {"workload": "balanced", "book": "flat", "requests": 2000000, "median_req_per_s": 15201218, "min_req_per_s": 12250413, "max_req_per_s": 19056185, "p50_ns": 51.2564, "p99_ns": 224.04, "p999_ns": 884.173, "max_ns": 7.70381e+06, "trades": 420544, "level_updates": 1862863, "final_resting_orders": 2688},
-    {"workload": "match_heavy", "book": "map", "requests": 2000000, "median_req_per_s": 10396534, "min_req_per_s": 7864234, "max_req_per_s": 12174336, "p50_ns": 66.9641, "p99_ns": 381.53, "p999_ns": 1254.13, "max_ns": 1.61274e+07, "trades": 755940, "level_updates": 1688927, "final_resting_orders": 1321},
-    {"workload": "match_heavy", "book": "flat", "requests": 2000000, "median_req_per_s": 13950007, "min_req_per_s": 8069790, "max_req_per_s": 18724224, "p50_ns": 50.4297, "p99_ns": 259.589, "p999_ns": 1011.9, "max_ns": 2.54976e+07, "trades": 755940, "level_updates": 1688927, "final_resting_orders": 1321}
+    {"workload": "add_cancel", "book": "map", "requests": 2000000, "median_req_per_s": 19161437, "min_req_per_s": 18735415, "max_req_per_s": 20058430, "p50_ns": 51.2564, "p99_ns": 121.941, "p999_ns": 202.959, "max_ns": 682519, "trades": 155424, "traded_qty": 3980602, "level_updates": 2076961, "final_resting_orders": 3714},
+    {"workload": "add_cancel", "book": "flat", "requests": 2000000, "median_req_per_s": 28882201, "min_req_per_s": 27612448, "max_req_per_s": 29119626, "p50_ns": 37.6156, "p99_ns": 104.993, "p999_ns": 168.65, "max_ns": 1.51867e+06, "trades": 155424, "traded_qty": 3980602, "level_updates": 2076961, "final_resting_orders": 3714},
+    {"workload": "balanced", "book": "map", "requests": 2000000, "median_req_per_s": 20070245, "min_req_per_s": 19424679, "max_req_per_s": 20782200, "p50_ns": 49.1896, "p99_ns": 167.823, "p999_ns": 267.856, "max_ns": 1.85811e+06, "trades": 508860, "traded_qty": 13010720, "level_updates": 2265026, "final_resting_orders": 2782},
+    {"workload": "balanced", "book": "flat", "requests": 2000000, "median_req_per_s": 30564729, "min_req_per_s": 29758760, "max_req_per_s": 31481883, "p50_ns": 32.2419, "p99_ns": 126.074, "p999_ns": 197.999, "max_ns": 707417, "trades": 508860, "traded_qty": 13010720, "level_updates": 2265026, "final_resting_orders": 2782},
+    {"workload": "match_heavy", "book": "map", "requests": 2000000, "median_req_per_s": 19462826, "min_req_per_s": 17590072, "max_req_per_s": 20240600, "p50_ns": 48.7763, "p99_ns": 183.944, "p999_ns": 278.19, "max_ns": 2.03766e+07, "trades": 1061780, "traded_qty": 27249060, "level_updates": 2370992, "final_resting_orders": 1387},
+    {"workload": "match_heavy", "book": "flat", "requests": 2000000, "median_req_per_s": 31096993, "min_req_per_s": 28496970, "max_req_per_s": 31968338, "p50_ns": 33.482, "p99_ns": 125.248, "p999_ns": 184.358, "max_ns": 780490, "trades": 1061780, "traded_qty": 27249060, "level_updates": 2370992, "final_resting_orders": 1387}
   ]
 }
