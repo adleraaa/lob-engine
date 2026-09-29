@@ -2,7 +2,8 @@
 // synthetic request mixes.
 //
 // Throughput: the whole pre-generated request stream is replayed on a fresh
-// book `reps` times; we report the median requests/second.
+// book `reps` times per book (alternating map/flat); we report the median
+// requests/second and the min-max range.
 // Latency: one more replay reads the CPU timestamp counter around every
 // single request; we report percentiles of those per-request times. The
 // numbers include the cost of reading the counter (reported separately as
@@ -197,45 +198,39 @@ struct Result {
 };
 
 template <typename Book>
-Result run(const std::string& book_name, const Workload& w, const std::vector<flow::Op>& ops, int reps,
-           const flow::Config& cfg, double ns_per_tick) {
-    Result r;
-    r.workload = w.name;
-    r.book = book_name;
-    r.ops = ops.size();
-
-    auto make_config = [&]() -> typename Book::Config {
-        if constexpr (std::is_same_v<Book, FlatOrderBook>) {
-            return {cfg.min_price, cfg.max_price};
-        } else {
-            return {};
-        }
-    };
-
-    std::vector<double> rates;
-    for (int rep = 0; rep < reps; ++rep) {
-        CountingListener listener;
-        Book book(listener, make_config());
-        const auto start = Clock::now();
-        for (const flow::Op& op : ops) {
-            apply(book, op);
-        }
-        const double seconds = std::chrono::duration<double>(Clock::now() - start).count();
-        rates.push_back(static_cast<double>(ops.size()) / seconds);
-        r.trades = listener.trades;
-        r.level_updates = listener.updates;
-        r.final_resting_orders = book.order_count();
+typename Book::Config book_config(const flow::Config& cfg) {
+    if constexpr (std::is_same_v<Book, FlatOrderBook>) {
+        return {cfg.min_price, cfg.max_price};  // the tick range the generator stays in
+    } else {
+        return {};
     }
-    std::sort(rates.begin(), rates.end());
-    r.median_ops_per_sec = rates[rates.size() / 2];
-    r.min_ops_per_sec = rates.front();
-    r.max_ops_per_sec = rates.back();
+}
 
-    // Separate latency pass so the timer reads do not distort throughput.
+// Replays the whole stream once on a fresh book; returns requests/second and
+// records the event counts in `r`.
+template <typename Book>
+double replay_rate(const std::vector<flow::Op>& ops, const flow::Config& cfg, Result& r) {
+    CountingListener listener;
+    Book book(listener, book_config<Book>(cfg));
+    const auto start = Clock::now();
+    for (const flow::Op& op : ops) {
+        apply(book, op);
+    }
+    const double seconds = std::chrono::duration<double>(Clock::now() - start).count();
+    r.trades = listener.trades;
+    r.level_updates = listener.updates;
+    r.final_resting_orders = book.order_count();
+    return static_cast<double>(ops.size()) / seconds;
+}
+
+// Separate pass that times every request, so the timer reads do not distort
+// the throughput numbers.
+template <typename Book>
+void measure_latency(const std::vector<flow::Op>& ops, const flow::Config& cfg, double ns_per_tick, Result& r) {
     std::vector<std::uint64_t> samples(ops.size());
     {
         CountingListener listener;
-        Book book(listener, make_config());
+        Book book(listener, book_config<Book>(cfg));
         for (std::size_t i = 0; i < ops.size(); ++i) {
             const std::uint64_t t0 = ticks();
             apply(book, ops[i]);
@@ -251,7 +246,42 @@ Result run(const std::string& book_name, const Workload& w, const std::vector<fl
     r.p99_ns = pct(0.99);
     r.p999_ns = pct(0.999);
     r.max_ns = static_cast<double>(samples.back()) * ns_per_tick;
-    return r;
+}
+
+void summarize_rates(std::vector<double> rates, Result& r) {
+    std::sort(rates.begin(), rates.end());
+    r.median_ops_per_sec = rates[rates.size() / 2];
+    r.min_ops_per_sec = rates.front();
+    r.max_ops_per_sec = rates.back();
+}
+
+// Measures both books on one request stream. Throughput runs alternate
+// map, flat, map, flat, ... so a slow period on a busy machine (turbo
+// changes, background work) hits both books rather than just one of them.
+// One untimed replay of each comes first to warm caches and clocks.
+void measure_workload(const Workload& w, const std::vector<flow::Op>& ops, const flow::Config& cfg, int reps,
+                      double ns_per_tick, std::vector<Result>& out) {
+    Result map_r;
+    Result flat_r;
+    map_r.workload = flat_r.workload = w.name;
+    map_r.book = "map";
+    flat_r.book = "flat";
+    map_r.ops = flat_r.ops = ops.size();
+
+    replay_rate<MapOrderBook>(ops, cfg, map_r);
+    replay_rate<FlatOrderBook>(ops, cfg, flat_r);
+    std::vector<double> map_rates;
+    std::vector<double> flat_rates;
+    for (int rep = 0; rep < reps; ++rep) {
+        map_rates.push_back(replay_rate<MapOrderBook>(ops, cfg, map_r));
+        flat_rates.push_back(replay_rate<FlatOrderBook>(ops, cfg, flat_r));
+    }
+    summarize_rates(map_rates, map_r);
+    summarize_rates(flat_rates, flat_r);
+    measure_latency<MapOrderBook>(ops, cfg, ns_per_tick, map_r);
+    measure_latency<FlatOrderBook>(ops, cfg, ns_per_tick, flat_r);
+    out.push_back(map_r);
+    out.push_back(flat_r);
 }
 
 // Fractions of each request kind actually generated. They differ from the
@@ -331,8 +361,7 @@ int main(int argc, char** argv) {
         cfg.mix = w.mix;
         const std::vector<flow::Op> ops = flow::Generator(cfg).generate(op_count);
         actual_mixes.push_back(mix_json(ops));
-        results.push_back(run<MapOrderBook>("map", w, ops, reps, cfg, ns_per_tick));
-        results.push_back(run<FlatOrderBook>("flat", w, ops, reps, cfg, ns_per_tick));
+        measure_workload(w, ops, cfg, reps, ns_per_tick, results);
         for (std::size_t k = results.size() - 2; k < results.size(); ++k) {
             const Result& r = results[k];
             std::printf(

@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    name: ${{ matrix.compiler }} / ${{ matrix.config }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        config: [release, asan-ubsan]
+        include:
+          - compiler: gcc
+            cc: gcc
+            cxx: g++
+          - compiler: clang
+            cc: clang
+            cxx: clang++
+          - config: release
+            build_type: Release
+            sanitize: "OFF"
+            diff_ops: "200000"
+            diff_seeds: "3"
+          - config: asan-ubsan
+            build_type: Debug
+            sanitize: "ON"
+            diff_ops: "50000"
+            diff_seeds: "1"
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DLOB_WERROR=ON
+          -DLOB_SANITIZE=${{ matrix.sanitize }}
+      - name: Build
+        run: cmake --build build
+      - name: Unit tests + quick difftest
+        run: ctest --test-dir build --output-on-failure
+      - name: Longer differential test
+        run: ./build/lob_difftest --ops ${{ matrix.diff_ops }} --seeds ${{ matrix.diff_seeds }}
+      - name: Benchmark smoke run
+        if: matrix.config == 'release'
+        run: ./build/lob_bench --ops 50000 --reps 1
+
+  checks:
+    name: format, lint, mutation check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install tools
+        run: pip install clang-format==19.1.7 ruff==0.16.9
+      - name: clang-format
+        run: clang-format --dry-run --Werror $(git ls-files '*.hpp' '*.cpp')
+      - name: ruff
+        run: |
+          ruff check scripts
+          ruff format --check scripts
+      - name: Mutation check (difftest must catch every injected bug)
+        run: python scripts/mutation_check.py --cxx g++ --ops 20000
