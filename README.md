@@ -4,11 +4,17 @@ A single-threaded limit order book and matching engine in C++20. It supports lim
 fill-or-kill orders, cancels, and modifies, matches with price-time priority, and emits trade and
 price-level update events. The book is a class template over its price-level container, so the
 same matching code runs on a `std::map` level book and on a flat, array-indexed level book, and the
-benchmark compares the two directly. I built it to learn how exchange matching engines are
+benchmark compares the two directly. The project is a study of how exchange matching engines are
 structured and how to test one properly. Correctness is checked by a randomized differential test:
 millions of generated requests go to both engines and to a deliberately simple reference book, and
 every result, trade, level update and best bid/ask, plus periodic full-book snapshots, must match
 exactly.
+
+## How this was built
+
+This project was built with [Claude Code](https://claude.com/claude-code), an AI coding agent, on
+September 28, 2026 (17 of 17 commits carry a `Co-Authored-By: Claude` trailer). The numbers in this
+README come from the scripts and result files in this repository.
 
 ## Results
 
@@ -21,7 +27,7 @@ and flags it was produced with.
 | check | result | source |
 |---|---|---|
 | Differential test, 5 request mixes x 3 seeds x 1,000,000 requests | 15,000,000 requests, 3,114,030 trades and 13,849,530 level updates compared one by one across the reference, map and flat books; best bid and ask compared after every request; 15,000 full-book snapshot comparisons; 0 mismatches | [`difftest.json`](results/difftest.json) |
-| Mutation check: 9 hand-injected bugs (FIFO to LIFO, off-by-one at the limit price, missing event, broken hash-map deletion, ...) | 9 / 9 caught, all 9 by a result mismatch. Mutants are built with `-DNDEBUG`, so the engine's own `assert()`s cannot take credit, and the unmutated difftest must pass first | [`mutation_check.md`](results/mutation_check.md) |
+| Mutation check: 9 deliberately injected bugs (FIFO to LIFO, off-by-one at the limit price, missing event, broken hash-map deletion, ...) | 9 / 9 caught, all 9 by a result mismatch. Mutants are built with `-DNDEBUG`, so the engine's own `assert()`s cannot take credit, and the unmutated difftest must pass first | [`mutation_check.md`](results/mutation_check.md) |
 | Unit tests (GoogleTest) | 79 test instances: 19 behaviour tests and 1 tick-range test run against all three books, plus engine-only, flat-book, container and CLI-parsing tests; ctest also checks that the difftest rejects malformed arguments | `tests/` |
 
 All three books in the difftest get the same tick range, so they must also agree on which prices are
@@ -108,14 +114,14 @@ How to read this:
   `rdtsc` pair costs 6.6 ns here, `timer_overhead_ns` in `bench.json`); subtracting it, the map
   book's p50 is 1.44x to 1.66x the flat book's, close to the throughput ratio.
 - The three workloads run at about the same rate within each book, even though `match_heavy`
-  produces 7 times the trades of `add_cancel`. I have not profiled why. My guess is that a fill
-  costs about as much as the passive add or cancel it replaces, since each is one level update plus
-  a few pointer writes.
-- My guess for why the flat book is not further ahead (not measured separately): most activity is
+  produces 7 times the trades of `add_cancel`. This was not profiled. One possible explanation is
+  that a fill costs about as much as the passive add or cancel it replaces, since each is one level
+  update plus a few pointer writes.
+- A possible reason the flat book is not further ahead (not measured separately): most activity is
   within a few dozen ticks of the mid, so the map's tree of live levels stays small and
   cache-resident.
 - The max values (up to 20 ms) are OS interruptions on a desktop Windows machine, not engine
-  behaviour; I report p99.9 and leave max in `bench.json`.
+  behaviour; the table reports p99.9, and max is left in `bench.json`.
 
 ## Architecture
 
@@ -226,7 +232,7 @@ On a MinGW CMake without a CA bundle, the GoogleTest download fails with a TLS e
   like-for-like comparison.
 - **Differential testing against a slow oracle, then testing the test.** The reference book is a
   vector with linear scans, short enough to verify by reading. The typed unit tests also run against
-  it, so it is checked against hand-worked examples, and the mutation script confirms the difftest
+  it, so it is checked against worked examples, and the mutation script confirms the difftest
   fails on realistic bugs rather than passing vacuously.
 - **Deterministic generator.** The order-flow generator uses its own splitmix64 PRNG instead of
   `<random>` distributions (whose output is implementation-defined), so a seed produces the same
@@ -236,8 +242,8 @@ On a MinGW CMake without a CA bundle, the GoogleTest download fails with a TLS e
 
 - Single-threaded, in-memory only: no network protocol, persistence, or market-data feed handler.
 - No stop, iceberg/hidden or pegged orders, no auctions, no self-trade prevention.
-- Only synthetic order flow. I did not replay real exchange data (for example LOBSTER sample files),
-  so the benchmark mix and book shape are my assumptions, not measured market behaviour.
+- Only synthetic order flow. No real exchange data was replayed (for example LOBSTER sample files),
+  so the benchmark mix and book shape are assumptions, not measured market behaviour.
 - The flat book needs a bounded tick range (the map book can take one too), and its best-level scan
   is O(range) in the worst case (for example, a lone order at each end of a wide range).
 - The id map never shrinks and the pool never returns memory to the OS.
@@ -251,7 +257,7 @@ On a MinGW CMake without a CA bundle, the GoogleTest download fails with a TLS e
   index changes, but a file edited after the last configure and never staged is not reflected in
   the `-dirty` marker.
 - The difftest can only catch disagreements between the engine and the oracle. A rule both
-  implement the same wrong way would pass; the hand-written unit tests are the guard against that.
+  implement the same wrong way would pass; the example-based unit tests are the guard against that.
 
 ## License
 
