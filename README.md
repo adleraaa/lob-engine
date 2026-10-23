@@ -12,9 +12,10 @@ exactly.
 
 ## How this was built
 
-This project was built with [Claude Code](https://claude.com/claude-code), an AI coding agent, on
-September 28, 2026 (17 of 17 commits carry a `Co-Authored-By: Claude` trailer). The numbers in this
-README come from the scripts and result files in this repository.
+This project was built with [Claude Code](https://claude.com/claude-code), an AI coding agent.
+All 17 commits made on September 28, 2026 (US Eastern) carry a `Co-Authored-By: Claude` trailer,
+and later README edits were also made with Claude Code. The numbers in this README come from the
+scripts and result files in this repository.
 
 ## Results
 
