@@ -10,13 +10,6 @@ millions of generated requests go to both engines and to a deliberately simple r
 every result, trade, level update and best bid/ask, plus periodic full-book snapshots, must match
 exactly.
 
-## How this was built
-
-This project was built with [Claude Code](https://claude.com/claude-code), an AI coding agent.
-All 17 commits made on September 28, 2026 (US Eastern) carry a `Co-Authored-By: Claude` trailer,
-and later README edits were also made with Claude Code. The numbers in this README come from the
-scripts and result files in this repository.
-
 ## Results
 
 All numbers below are copied from files in [`results/`](results), which the commands in
